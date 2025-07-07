@@ -34,7 +34,7 @@ int main() {
 	int row, col;
 	printf("Enter size of playground [row\tcolumn]:\t");
 	scanf("%d %d", &row, &col);
-	getchar();
+//	getchar();
 
 	int x = col / 2;
 	int y = row / 2;
@@ -45,19 +45,23 @@ int main() {
 
 	int running = 0;
 
-	Input(&dx, &dy);
-	x += dx;
-	y += dy;
+	InGame();
+	while (1) {
+		Input(&dx, &dy);
 
-	if (dx != 0 || dy != 0)
-		printf("received input!!!\n");
+		if (dx != 0 || dy != 0) {
+			printf("received input!!!\n");
+			x += dx;
+			y += dy;
+			running = 1;
 
-	running = 1;
+			break;
+		}
+	}
+
 	double time_last = GetCurrentTime();
 	double time_current;
 
-	printf("\033[?25l");  // hide cursor
-	InGame();
 	FILE* timeLog = fopen("timeDiff.log", "w");
 	while (running++) {
 		Input(&dx, &dy);
@@ -77,6 +81,7 @@ int main() {
 		}
 	}
 
+	OffGame();
 	return 0;
 }
 
@@ -98,24 +103,31 @@ void Render(int row, int col, int x, int y) {
 	}
 
 	printf("\r\n------- PRESS <ESC> TO EXIT THE GAME -------\r\n");
+	fflush(stdout);
 }
 
 void Input(int* dx, int* dy) {
-	char event[4];
+	FILE* fout = fopen("input.log", "a");
+	char event[5] = {};
 
-	size_t n = read(STDIN_FILENO, event, 4);
-	if (n > 0 && n < sizeof(event))
+	struct termios curTermios;
+	tcgetattr(STDIN_FILENO, &curTermios);
+	int canon = (curTermios.c_lflag & ICANON) != 0;
+	if (canon)
+		fprintf(fout, "CANON -> %d\r\n", canon);
+	else
+		fprintf(fout, "NOT CANON -> %d\r\n", canon);
+
+	size_t n = read(STDIN_FILENO, event, sizeof(event));
+	if (n > 0 + canon && n < sizeof(event))
 		event[n] = 0;
 
-	if (n == 0)
+	if (n == 0 + canon)
 		return;
 
-	if (n == 1) {
+	if (n == 1 + canon) {
 		if (event[0] == 27) {
 			OffGame();
-			printf("\n*********** [ GAME EXITED! ] ***********\n");
-			printf("\033[?25h");	// show cursor
-			exit(EXIT_SUCCESS);
 		}
 		else
 			Wasd(event, dx, dy);
@@ -123,13 +135,7 @@ void Input(int* dx, int* dy) {
 	else
 		Arrow(event, dx, dy);
 
-//	if (event[0] == 27)
-//		Arrow(event, dx, dy);
-//	else
-//		Wasd(event, dx, dy);
-
-	FILE* fout = fopen("input.log", "a");
-	fprintf(fout, "\t%s\n\n", event);
+	fprintf(fout, "\t%s\r\n\n", event);
 	fclose(fout);
 }
 void Arrow(char event[], int* dx, int* dy) {
@@ -174,9 +180,16 @@ void Wasd(char event[], int* dx, int* dy) {
 }
 
 void OffGame() {
-	tcsetattr(STDIN_FILENO, TCSANOW, &originalTermios);
+	printf("\n*********** [ GAME EXITED! ] ***********\n");
+
+	printf("\033[?25h");	// show cursor
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalTermios);
+
+	exit(EXIT_SUCCESS);
 }
 void InGame() {
+	printf("\033[?25l");  // hide cursor
+	
 	struct termios inGameTermios = originalTermios;
 
 	inGameTermios.c_lflag &= ~(ECHO | ICANON);
